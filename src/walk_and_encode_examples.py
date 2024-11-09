@@ -1,15 +1,30 @@
 from sentence_transformers import SentenceTransformer
 import os
 import pandas as pd
+from openai import OpenAI
+
+PROXY_ENDPOINT = "https://nova-litellm-proxy.onrender.com/"
 
 class WalkAndEncode:
-    def __init__(self, model_name=None):
+    def __init__(self, api_key, model_name=None):
+        self.api_key = api_key
+        self.client = OpenAI(api_key=self.api_key, base_url=PROXY_ENDPOINT)
         if model_name is None:
             self.model_name = "jinaai/jina-embeddings-v2-base-code"
         else:
             self.model_name = model_name
         self.model = SentenceTransformer(self.model_name, trust_remote_code=True)
         self.model.max_seq_length = 1024
+
+    def infer(self, code):
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": f"Observe the given code-script and document, please return a 3-4 sentence description of what the goal of this code is in question format such that we could use it to retrieve code during a future information-retrieval segment. Code:\n\n```{code[:5000]}```"}],
+            )
+            return response.choices[0].message.content
+        except:
+            return None, None, None
     
     def read_file_content(self, file_path):
         try:
@@ -28,10 +43,14 @@ class WalkAndEncode:
                 if content is None:
                     continue
                 try:
+                    question = self.infer(content)
                     encoding = self.model.encode(content)
+                    question_encoding = self.model.encode(question)
                     results.append({
                         'file_path': file_path,
-                        'encoding': encoding.tolist()
+                        "question": question,
+                        "question_encoding": question_encoding.tolist(),
+                        'encoding': encoding.tolist(),
                     })
                     print(f"Processed: {file_path}")
                 except Exception as e:
