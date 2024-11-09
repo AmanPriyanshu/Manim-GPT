@@ -37,30 +37,106 @@ class CodeGen:
                     },
                     "required": ["story_board"]
                 }
+            },
+            {
+                "name": "code_deployer",
+                "description": "Return code which can directly be executed in python, only code-script to be returned.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                        }
+                    },
+                    "required": ["code"]
+                }
+            },
+            {
+                "name": "code_combiner",
+                "description": "Return code which combines given stage code, to create one unified script including all necessary imports and everything to visaulize the given objective.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                        }
+                    },
+                    "required": ["code"]
+                }
+            },
+            {
+                "name": "voiceover_gen",
+                "description": "Return voiceover string to put over the following visualization no more than one-three sentences.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "audioscript": {
+                            "type": "string",
+                        }
+                    },
+                    "required": ["audioscript"]
+                }
             }
         ]
         self.paths, self.encodings, self.question_encodings = self.df['file_path'].tolist(), np.array([json.loads(i) for i in self.df['encoding'].tolist()]), np.array([json.loads(i) for i in self.df['question_encoding'].tolist()])
         self.encodings, self.question_encodings = torch.tensor(self.encodings).float(), torch.tensor(self.question_encodings).float()
 
-    def generate(self, aim, path_contexts):
+    def generate(self, aim, path_contexts, n=3):
         prompt = f"You are a story-boarding assistant with expertise in visual explanation and in Manim, the Graphical Animation Library. Your goal is to visualize the concept given by the user: \"{aim}\". Give simple steps for creating a 30 second clip, essentially you're story boarding with not more than 3-5 stages and return a string describe the events that take place in each of those stages. (Understand the limitations of Manim and be simplistic). Note: Here are some example files of code we have to take inspiration for some of the panels for:\n\n{path_contexts}"
         response = self.client.chat.completions.create(
-            model="openai/gpt-4o",
+            model="openai/gpt-4o", #openai/
             messages=[{"role": "system", "content": "You are a research visualization tool. Mathemetical representations etc."}, {"role": "user", "content": prompt}],
             functions=self.functions,
             function_call={"name": "manim_story_board"}
         )
         story_board = json.loads(response.choices[0].message.function_call.arguments)['story_board']
+        codes = []
         for story in story_board:
             a = self.model.encode(story)
-            print(a.shape)
-            cosine_similarity_raw = cos_sim(a, self.encodings)
-            cosine_similarity_question = cos_sim(a, self.question_encodings)
-            print(cosine_similarity_question, cosine_similarity_raw)
-            exit()
-
-        # prompt = """You are a coding assistant with expertise in Manim, Graphical Animation Library. \n
-        #     Here is a full set of Manim documentation:  \n ------- \n  {context} \n ------- \n Answer the user
-        #     question based on the above provided documentation. Ensure any code you provide can be executed \n
-        #     with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-        #     Then list the imports. And finally list the functioning code block. Here is the user question:"""
+            cosine_similarity_raw = cos_sim(a, self.encodings).numpy().flatten()
+            cosine_similarity_question = cos_sim(a, self.question_encodings).numpy().flatten()
+            cosine_scores = cosine_similarity_raw+cosine_similarity_question
+            top_n_documents = [self.paths[i] for i in np.argsort(cosine_scores[:n])]
+            examples = []
+            for document_path in top_n_documents:
+                with open(document_path, "r") as f:
+                    content = f.read()
+                    examples.append(document_path+"\n----\n"+content[:5000])
+            examples = "\n\n".join(examples)
+            response = self.client.chat.completions.create(
+                model="openai/gpt-4o", #openai/
+                messages=[{"role": "system", "content": "You are a research visualization tool. Mathemetical representations etc. However, no time or complex latex be simple."}, {"role": "user", "content": f"Create code for creating the following visualization stage. The main aim is: {aim} and current stage is {story}.\n\nHere are some examples:{examples}"}],
+                functions=self.functions,
+                function_call={"name": "code_deployer"}
+            )
+            code = json.loads(response.choices[0].message.function_call.arguments)['code']
+            codes.append(code)
+        story_string = '\n'.join(story_board)
+        code_string = '\n'.join(codes)
+        response = self.client.chat.completions.create(
+            model="openai/gpt-4o",  # Assuming 'gpt-4o' was a typo; update accordingly if needed
+            messages=[
+                {"role": "system", "content": "You are a research visualization tool. Mathematical representations, etc. However, no time or complex latex be simple."},
+                {
+                    "role": "user",
+                    "content": f"Create code for creating the following visualization stage. The main aim is: {aim} and the story-board is as follows: {story_string}.\n\nHere are segmented codes: {code_string}"
+                }
+            ],
+            functions=self.functions,
+            function_call={"name": "code_combiner"},
+        )
+        code = json.loads(response.choices[0].message.function_call.arguments)['code']
+        response = self.client.chat.completions.create(
+            model="openai/gpt-4o",  # Updated model if 'gpt-4o' was a typo; adjust accordingly
+            messages=[
+                {"role": "system", "content": "You are a research visualization tool. Mathematical representations, etc. However, no time or complex latex be simple."},
+                {
+                    "role": "user",
+                    "content": f"Create code for creating the following visualization stage. The main aim is: {aim} and the story-board is as follows: {story_string}.\n\nHere is the visualization code:{code}"
+                }
+            ],
+            functions=self.functions,
+            function_call={"name": "voiceover_gen"},
+        )
+        audioscript = json.loads(response.choices[0].message.function_call.arguments)['audioscript']
+        return code, audioscript

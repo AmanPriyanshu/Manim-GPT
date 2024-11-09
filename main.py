@@ -12,4 +12,9 @@ if __name__=='__main__':
         encodings_df = pd.read_csv("example_mapper_rag_assist.csv")
     paths = [i.replace('data/', '') for i in encodings_df['file_path'].tolist()]
     cg = CodeGen(api_key="sk-c3ddQQtQ1_M41pX0s9CY3A", df=encodings_df)
-    cg.generate("Convolutional Nueral Network visualization", paths)
+    code, audioscript = cg.generate("Convolutional Nueral Network visualization", paths)
+    os.makedirs("tmp", exist_ok=True)
+    with open(os.path.join("tmp", "code.py"), "w") as f:
+        f.write(code)
+    with open(os.path.join("tmp", "audio.txt"), "w") as f:
+        f.write(audioscript)
