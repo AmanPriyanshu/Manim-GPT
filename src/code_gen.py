@@ -1,6 +1,7 @@
 from sentence_transformers import SentenceTransformer
 import pandas as pd
 from openai import OpenAI
+import json
 
 PROXY_ENDPOINT = "https://nova-litellm-proxy.onrender.com/"
 
@@ -44,8 +45,10 @@ class CodeGen:
             functions=self.functions,
             function_call={"name": "manim_story_board"}
         )
-        prompt = """You are a coding assistant with expertise in Manim, Graphical Animation Library. \n
-            Here is a full set of Manim documentation:  \n ------- \n  {context} \n ------- \n Answer the user
-            question based on the above provided documentation. Ensure any code you provide can be executed \n
-            with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-            Then list the imports. And finally list the functioning code block. Here is the user question:"""
+        args = json.loads(response.choices[0].message.function_call.arguments)
+        print(args)
+        # prompt = """You are a coding assistant with expertise in Manim, Graphical Animation Library. \n
+        #     Here is a full set of Manim documentation:  \n ------- \n  {context} \n ------- \n Answer the user
+        #     question based on the above provided documentation. Ensure any code you provide can be executed \n
+        #     with all required imports and variables defined. Structure your answer with a description of the code solution. \n
+        #     Then list the imports. And finally list the functioning code block. Here is the user question:"""
