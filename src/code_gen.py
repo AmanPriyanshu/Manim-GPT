@@ -78,11 +78,15 @@ class CodeGen:
                 }
             }
         ]
-        self.paths, self.encodings, self.question_encodings = self.df['file_path'].tolist(), np.array([json.loads(i) for i in self.df['encoding'].tolist()]), np.array([json.loads(i) for i in self.df['question_encoding'].tolist()])
+        try:
+            self.paths, self.encodings, self.question_encodings = self.df['file_path'].tolist(), np.array([json.loads(i) for i in self.df['encoding'].tolist()]), np.array([json.loads(i) for i in self.df['question_encoding'].tolist()])
+        except:
+            self.paths, self.encodings, self.question_encodings = self.df['file_path'].tolist(), np.array([i for i in self.df['encoding'].tolist()]), np.array([i for i in self.df['question_encoding'].tolist()])
         self.encodings, self.question_encodings = torch.tensor(self.encodings).float(), torch.tensor(self.question_encodings).float()
 
     def generate(self, aim, path_contexts, n=3):
         prompt = f"You are a story-boarding assistant with expertise in visual explanation and in Manim, the Graphical Animation Library. Your goal is to visualize the concept given by the user: \"{aim}\". Give simple steps for creating a 30 second clip, essentially you're story boarding with not more than 3-5 stages and return a string describe the events that take place in each of those stages. (Understand the limitations of Manim and be simplistic). Note: Here are some example files of code we have to take inspiration for some of the panels for:\n\n{path_contexts}"
+        print("Generating story")
         response = self.client.chat.completions.create(
             model="openai/gpt-4o", #openai/
             messages=[{"role": "system", "content": "You are a research visualization tool. Mathemetical representations etc."}, {"role": "user", "content": prompt}],
@@ -91,6 +95,7 @@ class CodeGen:
         )
         story_board = json.loads(response.choices[0].message.function_call.arguments)['story_board']
         codes = []
+        print("Generating individual code")
         for story in story_board:
             a = self.model.encode(story)
             cosine_similarity_raw = cos_sim(a, self.encodings).numpy().flatten()
@@ -116,7 +121,19 @@ class CodeGen:
         response = self.client.chat.completions.create(
             model="openai/gpt-4o",  # Assuming 'gpt-4o' was a typo; update accordingly if needed
             messages=[
-                {"role": "system", "content": "You are a research visualization tool. Mathematical representations, etc. However, no time or complex latex be simple."},
+                {"role": "system", "content": "You are a research visualization tool. Mathematical representations, etc. However, no time or complex latex be simple. At the end of it, combine all scenes. Make sure not to use latex."},
+                {
+                    "role": "user",
+                    "content": f"Create code for creating the following visualization stage. The main aim is: {aim} and the story-board is as follows: {story_string}.\n\nHere are segmented codes: {code_string}"
+                }
+            ],
+            functions=self.functions,
+            function_call={"name": "code_combiner"},
+        )
+        response = self.client.chat.completions.create(
+            model="openai/gpt-4o",  # Assuming 'gpt-4o' was a typo; update accordingly if needed
+            messages=[
+                {"role": "system", "content": "You are a research visualization tool. Mathematical representations, etc. Your specific job is code correction. However, no time or complex latex be simple. At the end of it, combine all scenes into one single scene. Make sure not to use latex."},
                 {
                     "role": "user",
                     "content": f"Create code for creating the following visualization stage. The main aim is: {aim} and the story-board is as follows: {story_string}.\n\nHere are segmented codes: {code_string}"

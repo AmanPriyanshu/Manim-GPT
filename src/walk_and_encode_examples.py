@@ -24,7 +24,7 @@ class WalkAndEncode:
             )
             return response.choices[0].message.content
         except:
-            return None, None, None
+            return None
     
     def read_file_content(self, file_path):
         try:

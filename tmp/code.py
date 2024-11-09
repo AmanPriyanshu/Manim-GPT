@@ -1,105 +1,146 @@
 from manim import *
+
+class Simple2DGrid(Scene):
+    def construct(self):
+        # Create a grid to represent a 2D image
+        grid = VGroup()
+        for x in range(5):  # 5x5 grid
+            for y in range(5):
+                square = Square(side_length=0.4, fill_color=BLUE, fill_opacity=0.4)
+                square.move_to(x * RIGHT + y * UP)
+                grid.add(square)
+        grid.move_to(ORIGIN)
+        
+        # Highlight the grid
+        input_layer_label = Text("Input Image Layer", font_size=36)
+        input_layer_label.next_to(grid, UP, buff=0.5)
+
+        # Add grid and label to scene
+        self.play(Create(grid))
+        self.play(Write(input_layer_label))
+        
+        # Keep the image on screen for a bit
+        self.wait(2)
+
+class ConvolutionalLayer(Scene):
+    def construct(self):
+        # Create a grid representing the input image
+        input_grid = VGroup(*[Square() for _ in range(16)])
+        input_grid.arrange_in_grid(rows=4, buff=0)
+        input_grid.set_fill(BLUE, opacity=0.4)
+        self.play(Create(input_grid))
+
+        # Show filters moving across the input image
+        filters_group = VGroup(
+            Square(side_length=0.9, color=RED),
+            Square(side_length=0.9, color=GREEN),
+            Square(side_length=0.9, color=YELLOW)
+        )
+        filters_group.arrange(buff=0.1).move_to(input_grid[0])
+
+        for filter in filters_group:
+            self.play(filter.animate.shift(RIGHT*0.9*3), run_time=2)
+            self.play(filter.animate.shift(DOWN*0.9*3), run_time=2)
+
+        # Overlay the input grid on top of the movement to illustrate convolution
+        self.play(input_grid.animate.set_opacity(0.2))
+
+        # Adding feature map result
+        feature_map_result = Text("Feature Map Result", color=WHITE).next_to(input_grid, DOWN)
+        self.play(Write(feature_map_result))
+
 import numpy as np
 
-config.pixel_height = 720
-config.pixel_width = 1280
-config.frame_height = 8.0
-config.frame_width = 14.0
-
-class ConvVisualization(Scene):
+class ReLUActivation(Scene):
     def construct(self):
-        # Create a 2D grid to represent the input image
-        grid = VGroup(*[
-            VGroup(*[
-                Square(side_length=0.5, stroke_color=GREY, fill_color=WHITE, fill_opacity=0.5)
-                for _ in range(8)
-            ]).arrange(RIGHT, buff=0)
-            for _ in range(8)
-        ]).arrange(DOWN, buff=0)
-        self.add(grid)
+        # Creating a grid to mimic convolutional layer's feature maps
+        grid = VGroup(*[VGroup(*[Square(side_length=0.5) for _ in range(5)]).arrange(RIGHT) for _ in range(5)]).arrange(DOWN)
 
-        # Highlight a section of the grid to show it's being processed
-        highlight_rect = Rectangle(
-            width=1.5, height=1.5, 
-            stroke_color=YELLOW, fill_color=YELLOW, fill_opacity=0.5
-        )
-        highlight_rect.move_to(grid[3][3].get_center())
+        # Assigning dummy data to the grid (some values above zero, some not)
+        values = np.random.uniform(-1, 1, (5, 5))
 
-        self.play(Create(highlight_rect))
+        # Adding values to the grid
+        for i, row in enumerate(grid):
+            for j, square in enumerate(row):
+                color = YELLOW if values[i][j] > 0 else GRAY  # Highlight active neurons
+                text = Text(f"{values[i][j]:.2f}", font_size=24).move_to(square.get_center())
+                square.set_fill(color, opacity=0.5)
+                square.add(text)
+
+        self.play(Create(grid))
+        self.wait()
+
+        # Animation for ReLU activation
+        animations = []
+        for i, row in enumerate(values):
+            for j, val in enumerate(row):
+                if val <= 0:
+                    animations.append(FadeOut(grid[i][j]))
+                else:
+                    grid[i][j].set_fill(YELLOW, opacity=0.8)
+
+        self.play(*animations)
+        self.wait(2)
+
+class MaxPooling(Scene):
+    def construct(self):
+        # Original feature map (3x3)
+        original_matrix = np.array([
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]
+        ])
+
+        # Visual representation of original feature map
+        matrix_mobject = IntegerMatrix(original_matrix, h_buff=2, v_buff=2)
+        matrix_mobject.scale(0.5)
+
+        # Title for the original map
+        orig_title = Text("Original Feature Map").next_to(matrix_mobject, UP)
+
+        # Axes to align matrices correctly
+        axes = Axes(x_range=[0, 3, 1], y_range=[0, 3, 1],
+                    height=2, width=2, axis_config={"stroke_opacity": 0})
+        axes.move_to(matrix_mobject)
+
+        # Simulate max pooling operation (2x2) with stride 2 
+        pooled_matrix = np.array([
+            [5, 6],
+            [8, 9]
+        ])
+
+        # Visual representation of the pooled feature map
+        pooled_matrix_mobject = IntegerMatrix(pooled_matrix, h_buff=2, v_buff=2, element_to_mobject_config={"fill_color": YELLOW})
+        pooled_matrix_mobject.scale(0.5)
+        pooled_matrix_mobject.next_to(matrix_mobject, RIGHT, buff=1)
+
+        # Title for the pooled map
+        pooled_title = Text("Pooled Feature Map").next_to(pooled_matrix_mobject, UP)
+
+        # Animations
+        self.play(Create(matrix_mobject), Write(orig_title))
+        self.wait(1)
+        self.play(ReplacementTransform(matrix_mobject.copy(), pooled_matrix_mobject), Write(pooled_title))
         self.wait(1)
 
-class ConvolutionalFilter(Scene):
+class CNNVisualization(Scene):
     def construct(self):
-        # Image Grid
-        grid = VGroup()
-        image_array = np.random.randint(0, 256, (5, 5)) # Example 5x5 image
-        for i in range(image_array.shape[0]):
-            for j in range(image_array.shape[1]):
-                square = Square(side_length=0.5)
-                square.move_to(np.array([j - 2, 2 - i, 0]))
-                square.set_fill(GRAY, opacity=image_array[i, j] / 256)
-                grid.add(square)
+        # Initialize the CNN layers
+        input_layer = Rectangle(width=1, height=1, color=BLUE)
+        conv_layer_1 = Rectangle(width=1.5, height=1.5, color=GREEN)
+        pool_layer_1 = Rectangle(width=1, height=1, color=ORANGE)
+        conv_layer_2 = Rectangle(width=1, height=1, color=GREEN)
+        pool_layer_2 = Rectangle(width=0.5, height=0.5, color=ORANGE)
+        dense_layer = Rectangle(width=0.5, height=0.5, color=PURPLE)
+        output_layer = Rectangle(width=0.5, height=0.5, color=RED)
 
-        grid.shift(LEFT * 2)
-        self.add(grid)
+        # Label the final output
+        output_label = Text("Final Categorization").next_to(output_layer, RIGHT)
 
-        # Define the filter
-        filter_size = 3
-        filter_highlights = VGroup()
+        # Arrange layers
+        layers = VGroup(input_layer, conv_layer_1, pool_layer_1, conv_layer_2, pool_layer_2, dense_layer, output_layer)
+        layers.arrange(RIGHT, buff=0.2)
 
-        for i in range(filter_size):
-            for j in range(filter_size):
-                filter_highlight = Square(side_length=0.5)
-                filter_highlight.move_to(np.array([j - 1, 1 - i, 0]))
-                filter_highlight.set_color(YELLOW)
-                filter_highlight.set_stroke(width=4)
-                filter_highlights.add(filter_highlight)
-
-        def update_filter_highlights(filter_highlights, time):
-            y, x = divmod(int(time), 3)
-            filter_position = np.array([x - 1, 1 - y, 0])
-            filter_highlights.move_to(filter_position + LEFT * 2)
-
-        filter_highlights.add_updater(update_filter_highlights)
-        self.add(filter_highlights)
-
-        # Slide the filter across the image
-        self.play(UpdateFromAlphaFunc(filter_highlights, lambda m, a: update_filter_highlights(m, a * 9)), run_time=5)
-        self.wait()
-
-class CNNFeatureMap(Scene):
-    def construct(self):
-        # Create input feature map matrix
-        input_matrix = IntegerMatrix(np.random.randint(0, 10, (5, 5)))
-        input_matrix.shift(LEFT * 3)
-
-        # Create filter matrices
-        filter1 = IntegerMatrix(np.random.randint(-1, 2, (3, 3)), v_buff=0.7)
-        filter1.next_to(input_matrix, RIGHT, buff=2)
-
-        filter2 = IntegerMatrix(np.random.randint(-1, 2, (3, 3)), v_buff=0.7)
-        filter2.next_to(filter1, RIGHT, buff=1)
-
-        # Create placeholder for resulting feature map
-        result_matrix = IntegerMatrix(np.zeros((3, 3)), v_buff=0.7, h_buff=1.4)
-        result_matrix.to_edge(RIGHT)
-
-        # Displaying elements
-        self.play(Create(input_matrix))
-        self.play(Create(filter1), Create(filter2))
-        self.play(TransformFromCopy(filter1, result_matrix))
-        
-        # Animate feature map computation
-        self.wait()
-        for i in range(3):
-            for j in range(3):
-                self.play(
-                    result_matrix.get_entries()[i * 3 + j].animate.set_value(
-                        np.sum(
-                            input_matrix.get_entries()[i:i+3, j:j+3].flatten() * filter1.get_entries() +
-                            input_matrix.get_entries()[i:i+3, j:j+3].flatten() * filter2.get_entries()
-                        )
-                    )
-                )
-        
-        self.wait(2)
+        # Add layers to scene
+        self.play(*[Create(layer) for layer in layers])
+        self.play(Write(output_label))
