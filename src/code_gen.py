@@ -118,6 +118,7 @@ class CodeGen:
             codes.append(code)
         story_string = '\n'.join(story_board)
         code_string = '\n'.join(codes)
+        print("Generating combined code")
         response = self.client.chat.completions.create(
             model="openai/gpt-4o",  # Assuming 'gpt-4o' was a typo; update accordingly if needed
             messages=[
@@ -130,19 +131,21 @@ class CodeGen:
             functions=self.functions,
             function_call={"name": "code_combiner"},
         )
+        code = json.loads(response.choices[0].message.function_call.arguments)['code']
         response = self.client.chat.completions.create(
             model="openai/gpt-4o",  # Assuming 'gpt-4o' was a typo; update accordingly if needed
             messages=[
                 {"role": "system", "content": "You are a research visualization tool. Mathematical representations, etc. Your specific job is code correction. However, no time or complex latex be simple. At the end of it, combine all scenes into one single scene. Make sure not to use latex."},
                 {
                     "role": "user",
-                    "content": f"Create code for creating the following visualization stage. The main aim is: {aim} and the story-board is as follows: {story_string}.\n\nHere are segmented codes: {code_string}"
+                    "content": f"Check if this code doesn't have latex and remove if there is also make sure there's a comnbing scene. Here's the code:\n\n```{code}```"
                 }
             ],
             functions=self.functions,
             function_call={"name": "code_combiner"},
         )
         code = json.loads(response.choices[0].message.function_call.arguments)['code']
+        print("Generating audio")
         response = self.client.chat.completions.create(
             model="openai/gpt-4o",  # Updated model if 'gpt-4o' was a typo; adjust accordingly
             messages=[
